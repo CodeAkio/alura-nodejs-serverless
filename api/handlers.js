@@ -7,6 +7,7 @@ const {
   getResultById
 } = require('./database');
 const { createToken, authorize, makeHash } = require('./auth');
+const { countCorrectAnswers } = require('./responses');
 
 function extractBody(event) {
   if (!event?.body) {
@@ -36,21 +37,8 @@ module.exports.sendResponse = async (event) => {
   if (authResult.statusCode == 401) return authResult;
 
   const { name, answers } = extractBody(event);
-  const correctQuestions = [3, 1, 0, 2];
 
-  const totlaCorrectAnswers = answers.reduce((acc, answer, index) => {
-    if (answer === correctQuestions[index]) {
-      acc++;
-    }
-    return acc;
-  }, 0)
-
-  const result = {
-    name,
-    answers,
-    totlaCorrectAnswers,
-    totalAnswers: answers.length
-  };
+  const result = countCorrectAnswers(name, answers);
 
   const insertedId = await saveResultsToDatabase(result);
 
