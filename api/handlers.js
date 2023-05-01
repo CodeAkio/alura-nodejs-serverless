@@ -1,20 +1,9 @@
 'use strict';
 
-const { MongoClient, ObjectId } = require('mongodb');
 const { pbkdf2Sync } = require('crypto');
 const { sign, verify } = require('jsonwebtoken');
 const { buildResponse } = require('./utils');
-
-let connectionInstance = null;
-async function connectToDatabase() {
-  if (connectionInstance) return connectionInstance;
-
-  const client = new MongoClient(process.env.MONGODB_CONNECTIONSTRING);
-  const connection = await client.connect();
-  connectionInstance = connection.db(process.env.MONGODB_DB_NAME);
-
-  return connectionInstance;
-}
+const { getUserByCredentials, saveResultsToDatabase, getResultById } = require('./database');
 
 async function authorize(event) {
   const { authorization } = event.headers;
@@ -47,12 +36,7 @@ module.exports.login = async (event) => {
   const { username, password } = extractBody(event)
   const hashedPass = pbkdf2Sync(password, process.env.SALT, 100000, 64, 'sha512').toString('hex')
 
-  const client = await connectToDatabase()
-  const collection = await client.collection('users')
-  const user = await collection.findOne({
-    name: username,
-    password: hashedPass
-  })
+  const user = await getUserByCredentials(username, hashedPass);
 
   if (!user) {
     return buildResponse(401, { error: 'Invalid Credentials' });
@@ -87,9 +71,7 @@ module.exports.sendResponse = async (event) => {
     totalAnswers: answers.length
   };
 
-  const client = await connectToDatabase();
-  const collection = client.collection('results');
-  const { insertedId } = await collection.insertOne(result);
+  const insertedId = await saveResultsToDatabase(result);
 
   return buildResponse(201, {
     resultId: insertedId,
@@ -104,12 +86,7 @@ module.exports.getResult = async (event) => {
   const authResult = await authorize(event);
   if (authResult.statusCode == 401) return authResult;
 
-  const client = await connectToDatabase();
-  const collection = client.collection('results');
-
-  const result = await collection.findOne({
-    _id: new ObjectId(event.pathParameters.id)
-  });
+  const result = await getResultById(event.pathParameters.id);
 
   if (!result) {
     return buildResponse(404, { error: 'Result not found' });
